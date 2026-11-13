@@ -1,0 +1,7 @@
+rtl/homa_endpoint.v
+rtl/homa_core.v
+rtl/homa_rx_ingress.v
+rtl/homa_tx_egress.v
+rtl/homa_app_load.v
+rtl/homa_deliver.v
+rtl/homa_ram.v
