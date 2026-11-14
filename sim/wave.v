@@ -2,8 +2,6 @@
 module wave;
 initial begin
     $dumpfile("build/wave.vcd");
-    $dumpvars(1, tb_sys.ep[0].u);
-    $dumpvars(1, tb_sys.ep[1].u);
-    $dumpvars(1, tb_sys.ep[2].u);
+    $dumpvars(3, tb_sys);   // one tb_sys scope; depth 3 reaches each endpoint's top-level signals
 end
 endmodule

@@ -1,0 +1,69 @@
+{
+  "trace": "build/trace.jsonl",
+  "scenarios": {
+    "basic":   "iverilog -g2005 -I rtl -s tb_sys -Ptb_sys.NREQ=2 -o build/ws.vvp -c sim/rtl_files.txt sim/tb_homa_system.v && vvp -n build/ws.vvp +trace={trace}",
+    "lossy":   "iverilog -g2005 -I rtl -s tb_sys -Ptb_sys.NREQ=3 -Ptb_sys.LOSS=100 -Ptb_sys.STRICT=0 -o build/ws.vvp -c sim/rtl_files.txt sim/tb_homa_system.v && vvp -n build/ws.vvp +trace={trace}",
+    "chaos":   "iverilog -g2005 -I rtl -s tb_sys -Ptb_sys.NREQ=3 -Ptb_sys.LOSS=80 -Ptb_sys.DUP=50 -Ptb_sys.BAD=50 -Ptb_sys.JIT=200 -Ptb_sys.STRICT=0 -o build/ws.vvp -c sim/rtl_files.txt sim/tb_homa_system.v && vvp -n build/ws.vvp +trace={trace}",
+    "slow":    "iverilog -g2005 -I rtl -s tb_sys -Ptb_sys.NREQ=2 -Ptb_sys.SVC=3000 -o build/ws.vvp -c sim/rtl_files.txt sim/tb_homa_system.v && vvp -n build/ws.vvp +trace={trace}",
+    "crowded": "iverilog -g2005 -I rtl -s tb_sys -Ptb_sys.NREQ=5 -Ptb_sys.NRPC=4 -Ptb_sys.MAXOUT=6 -Ptb_sys.GAP=20 -o build/ws.vvp -c sim/rtl_files.txt sim/tb_homa_system.v && vvp -n build/ws.vvp +trace={trace}"
+  },
+  "profile": {
+    "name": "Homa (draft-ousterhout-tsvwg-homa-00)",
+    "types": {
+      "DATA": {
+        "color": "#4da3ff",
+        "short": "DATA {off}",
+        "log": "{msg} bytes {off}..{last} of {len}{retx? (retransmission)}{ackid? + piggybacked ACK}, priority {prio}",
+        "about": "Carries part of a request or response. The first bytes of a message go out right away (unscheduled); the rest only as the receiver grants them. Unscheduled bytes use the receiver's cutoffs for priority, granted bytes the priority in the GRANT."
+      },
+      "GRANT": {
+        "color": "#3ddc84",
+        "short": "GRANT {off}",
+        "log": "you may send the {msg} up to byte {off}, at priority {gprio}",
+        "about": "Sent by a message's receiver to let the sender transmit more of it, up to the given offset and at the given priority. Receivers grant the messages with the fewest bytes left first (SRPT) and keep a few in progress at once."
+      },
+      "RESEND": {
+        "color": "#ffa94d",
+        "short": "RESEND {off}",
+        "log": "please resend the {msg}: {what}, at priority {rprio}",
+        "about": "Sent when expected bytes have not arrived for a while, asking for them again. A client also uses it to ask a quiet server for its response, and it repairs lost GRANTs: asking for bytes counts as granting them."
+      },
+      "START": {
+        "color": "#b197fc",
+        "short": "START {len}B",
+        "log": "the {msg} is {len} bytes, too long to send unscheduled: asking for GRANTs",
+        "about": "START_MSG: announces a message too long to send unscheduled, so the receiver can start granting it."
+      },
+      "ACK": {
+        "color": "#ced4da",
+        "short": "ACK",
+        "log": "response received: the server can forget this RPC{nacks? (and other RPCs)}",
+        "about": "Sent by the client once the whole response has arrived, so the server can free the RPC. It can also acknowledge other RPCs to the same server."
+      },
+      "NEED_ACK": {
+        "color": "#ffd43b",
+        "short": "NEED_ACK",
+        "log": "the response went out a while ago with no ACK: did it arrive?",
+        "about": "Sent by a server that finished sending a response but never got an ACK. The client answers ACK if it has the response, or RESEND if it is missing bytes."
+      },
+      "BUSY": {
+        "color": "#e599f7",
+        "short": "BUSY",
+        "log": "still working on it: do not give up on this RPC",
+        "about": "Reply to a RESEND when the peer is alive but has nothing to send yet, for example a server still computing its response. Keeps the RPC from timing out."
+      },
+      "UNKNOWN": {
+        "color": "#ff8787",
+        "short": "UNKNOWN",
+        "log": "no such RPC here: the sender must restart or drop it",
+        "about": "RPC_UNKNOWN: reply to a packet for an RPC the receiver has no record of. A client restarts the RPC from the beginning; a server just forgets it."
+      },
+      "CUTOFFS": {
+        "color": "#868e96",
+        "short": "CUTOFFS v{ver}",
+        "log": "use these priority cutoffs when sending to me: {cutoffs} (version {ver})",
+        "about": "Tells a peer which priority to give the unscheduled bytes of a message, by message length (shorter messages get higher priority). Sent when the peer's DATA shows an out-of-date cutoff version."
+      }
+    }
+  }
+}

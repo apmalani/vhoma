@@ -50,6 +50,8 @@ integer seed = SEED;
 integer errors = 0;
 integer now = 0;
 always @(posedge clk) now = now + 1;
+integer tf = 0;                // waterski trace, opened with +trace=<file>
+reg [8*512-1:0] tpath;
 
 // helpers
 function [7:0] pbyte(input integer c, input [63:0] id, input integer j, input integer kind);
@@ -249,20 +251,113 @@ task automatic note_delivery(input integer p);
     end
 endtask
 
+// waterski trace: one JSON object per line
+task automatic trace_send(input integer id, input integer e, input integer d, input integer n, input integer pri,
+                          input integer k, input integer note);   // note: 1 duplicate, 2 corrupted
+    integer b, pl, j;
+    reg [7:0]  ty;
+    reg [63:0] rid;
+    reg [31:0] f28, f32, f48;
+    begin
+        b = e * PB; ty = cb[b + 11]; rid = {g32(b + 20), g32(b + 24)};
+        f28 = g32(b + 28); f32 = g32(b + 32); f48 = g32(b + 48);
+        $fwrite(tf, "{\"ev\":\"send\",\"t\":%0d,\"id\":%0d,\"src\":\"ep%0d\",\"dst\":\"ep%0d\",\"type\":\"", $time, id, e, d);
+        case (ty)
+        T_DATA:     $fwrite(tf, "DATA");
+        T_GRANT:    $fwrite(tf, "GRANT");
+        T_RESEND:   $fwrite(tf, "RESEND");
+        T_UNKNOWN:  $fwrite(tf, "UNKNOWN");
+        T_BUSY:     $fwrite(tf, "BUSY");
+        T_CUTOFFS:  $fwrite(tf, "CUTOFFS");
+        T_NEED_ACK: $fwrite(tf, "NEED_ACK");
+        T_ACK:      $fwrite(tf, "ACK");
+        T_START:    $fwrite(tf, "START");
+        default:    $fwrite(tf, "TYPE_%0d", ty);
+        endcase
+        $fwrite(tf, "\"");
+        if (k >= 0)    $fwrite(tf, ",\"flow\":\"RPC %0d\"", k);
+        if (note == 1) $fwrite(tf, ",\"note\":\"network duplicate\"");
+        if (note == 2) $fwrite(tf, ",\"note\":\"corrupted in the network\"");
+        $fwrite(tf, ",\"fields\":{\"rpcid\":\"%h\",\"bytes\":%0d,\"prio\":%0d", rid, n, pri);
+        // DATA and START carry the sender's own message; GRANT and RESEND are about the peer's
+        if (ty == T_DATA || ty == T_START || ty == T_GRANT || ty == T_RESEND) begin
+            if ((ty == T_DATA || ty == T_START) == !rid[0]) $fwrite(tf, ",\"msg\":\"request\"");
+            else                                             $fwrite(tf, ",\"msg\":\"response\"");
+        end
+        case (ty)
+        T_DATA: begin
+            pl = n - 52;
+            $fwrite(tf, ",\"len\":%0d,\"off\":%0d,\"last\":%0d,\"payload\":%0d,\"retx\":%0d,\"cver\":%0d",
+                    f28, f48, f48 + pl - 1, pl, cb[b + 44], g16(b + 42));
+            if (f32 != 0 || g32(b + 36) != 0) $fwrite(tf, ",\"ackid\":\"%h\"", {f32, g32(b + 36)});
+        end
+        T_START:  $fwrite(tf, ",\"len\":%0d", f28);
+        T_GRANT:  $fwrite(tf, ",\"off\":%0d,\"gprio\":%0d", f28, cb[b + 32]);
+        T_RESEND: begin
+            if (f32 == 32'hFFFFFFFF) $fwrite(tf, ",\"what\":\"all of it\"");
+            else                     $fwrite(tf, ",\"what\":\"bytes %0d..%0d\"", f28, f28 + f32 - 1);
+            $fwrite(tf, ",\"off\":%0d,\"rprio\":%0d", f28, cb[b + 36]);
+        end
+        T_CUTOFFS: begin
+            $fwrite(tf, ",\"ver\":%0d,\"cutoffs\":\"%0d", g16(b + 60), g32(b + 28));
+            for (j = 1; j < 8; j = j + 1) $fwrite(tf, " %0d", g32(b + 28 + 4*j));
+            $fwrite(tf, "\"");
+        end
+        T_ACK: $fwrite(tf, ",\"nacks\":%0d", g16(b + 28));
+        default: ;
+        endcase
+        $fwrite(tf, "}}\n");
+    end
+endtask
+
+task automatic trace_drop(input integer id, input integer why);   // 0 lost, 1 frame error, 2 rejected
+    begin
+        $fwrite(tf, "{\"ev\":\"drop\",\"t\":%0d,\"id\":%0d,\"reason\":\"", $time, id);
+        case (why)
+        0:       $fwrite(tf, "lost in the network");
+        1:       $fwrite(tf, "frame error: the receiver discarded it");
+        default: $fwrite(tf, "rejected by the receiver (duplicate, unexpected, or no room)");
+        endcase
+        $fwrite(tf, "\"}\n");
+    end
+endtask
+
+// app-level events at endpoint e; count names a per-endpoint counter in the viewer
+task automatic trace_note(input integer e, input integer k, input integer what, input integer len, input integer peer);
+    begin
+        $fwrite(tf, "{\"ev\":\"note\",\"t\":%0d,\"node\":\"ep%0d\",\"flow\":\"RPC %0d\",", $time, e, k);
+        case (what)
+        0: $fwrite(tf, "\"count\":\"requests sent\",\"text\":\"app sends a %0d B request to ep%0d\"}\n", len, peer);
+        1: $fwrite(tf, "\"count\":\"requests received\",\"text\":\"app received the %0d B request\"}\n", len);
+        2: $fwrite(tf, "\"count\":\"responses sent\",\"text\":\"app sends a %0d B response\"}\n", len);
+        3: $fwrite(tf, "\"count\":\"answers received\",\"text\":\"app received the %0d B response: RPC done\"}\n", len);
+        4: $fwrite(tf, "\"count\":\"gave up\",\"text\":\"app gave up: no answer from ep%0d\"}\n", peer);
+        default: $fwrite(tf, "\"count\":\"slot refusals\",\"text\":\"no free RPC slot for the request: app will retry\"}\n");
+        endcase
+    end
+endtask
+
 task automatic net_put(input integer e, input integer n, input [31:0] daddr, input [2:0] pri);
-    integer p, j, copies, c;
+    integer p, j, copies, c, d, k;
+    reg [63:0] id;
     begin
         n_pkts = n_pkts + 1;
         copies = 1;
         if ({$random(seed)} % 1000 < LOSS) begin copies = 0; n_lost = n_lost + 1; end
         else if ({$random(seed)} % 1000 < DUP) begin copies = 2; n_dupd = n_dupd + 1; end
+        d  = daddr - BASE;
+        id = {g32(e*PB + 20), g32(e*PB + 24)};
+        k  = (!tf || cb[e*PB + 11] == T_CUTOFFS) ? -1 : find_rpc(id[0] ? d : e, id);
+        if (tf && copies == 0) begin trace_send(pseq, e, d, n, pri, k, 0); trace_drop(pseq, 0); pseq = pseq + 1; end
         for (c = 0; c < copies; c = c + 1) begin
             p = -1;
             for (j = PMAX - 1; j >= 0; j = j - 1) if (!p_v[j]) p = j;
-            if (p < 0) n_full = n_full + 1;
-            else begin
+            if (p < 0) begin
+                n_full = n_full + 1;
+                if (tf) begin trace_send(pseq, e, d, n, pri, k, 0); trace_drop(pseq, 0); pseq = pseq + 1; end
+            end else begin
                 for (j = 0; j < n; j = j + 1) pk[p*PB + j] = cb[e*PB + j];
-                p_v[p] = 1; p_busy[p] = 0; p_src[p] = e; p_dst[p] = daddr - BASE; p_len[p] = n;
+                p_v[p] = 1; p_busy[p] = 0; p_src[p] = e; p_dst[p] = d; p_len[p] = n;
                 p_pri[p] = pri; p_seq[p] = pseq; pseq = pseq + 1;
                 p_rdy[p] = now + 20 + ((JIT > 0) ? {$random(seed)} % (JIT + 1) : 0) + c * ({$random(seed)} % 400);
                 p_bad[p] = ({$random(seed)} % 1000 < BAD);
@@ -272,6 +367,7 @@ task automatic net_put(input integer e, input integer n, input [31:0] daddr, inp
                     pk[p*PB + j] = pk[p*PB + j] ^ (8'h01 << ({$random(seed)} % 8));
                 end
                 nq[p_dst[p]] = nq[p_dst[p]] + 1;
+                if (tf) trace_send(p_seq[p], e, d, n, pri, k, p_bad[p] ? 2 : c);
             end
         end
     end
@@ -342,16 +438,21 @@ generate for (g = 0; g < NE; g = g + 1) begin : ep
     end
 
     // ingress: deliver queued packets, highest priority first
-    integer ip = -1, ipos = 0, ib, iq, best;
+    integer ip = -1, ipos = 0, ib, iq, best, dseq = -1, dbad = 0;
     always @(posedge clk) begin
-        if (in_v && in_l) begin p_v[ip] = 0; ip = -1; end
+        // the endpoint flags a discarded packet the cycle after its last beat
+        if (tf && drop) trace_drop(dseq, dbad ? 1 : 2);
+        if (in_v && in_l) begin dseq = p_seq[ip]; dbad = p_bad[ip]; p_v[ip] = 0; ip = -1; end
         if (ip < 0 && nq[g] > 0 && ({$random(seed)} % 8 != 0)) begin
             best = -1;
             for (iq = 0; iq < PMAX; iq = iq + 1)
                 if (p_v[iq] && !p_busy[iq] && p_dst[iq] == g && p_rdy[iq] <= now &&
                     (best < 0 || p_pri[iq] > p_pri[best] || (p_pri[iq] == p_pri[best] && p_seq[iq] < p_seq[best])))
                     best = iq;
-            if (best >= 0) begin ip = best; ipos = 0; p_busy[ip] = 1; nq[g] = nq[g] - 1; note_delivery(ip); end
+            if (best >= 0) begin
+                ip = best; ipos = 0; p_busy[ip] = 1; nq[g] = nq[g] - 1; note_delivery(ip);
+                if (tf) $fwrite(tf, "{\"ev\":\"recv\",\"t\":%0d,\"id\":%0d}\n", $time, p_seq[ip]);
+            end
         end
         if (ip >= 0) begin
             for (ib = 0; ib < 8; ib = ib + 1) begin
@@ -391,13 +492,16 @@ generate for (g = 0; g < NE; g = g + 1) begin : ep
             if (a_resp) begin
                 shd = shd + 1;
                 if (!st_ok) `ERR(("ep%0d: response for rpc %0d rejected", g, ak))
+                if (tf) trace_note(g, ak, 2, resp_len(r_ql[ak], r_id[ak]), 0);
             end else if (st_ok) begin
                 if (find_rpc(g, st_id) >= 0) `ERR(("ep%0d: id %h reused", g, st_id))
                 if (st_id[0] || st_id == 0) `ERR(("ep%0d: client id %h not even/nonzero", g, st_id))
                 r_id[ak] = st_id; r_st[ak] = 1;
                 qh = qh + 1;
+                if (tf) trace_note(g, ak, 0, r_ql[ak], r_srv[ak]);
             end else begin
                 n_rej = n_rej + 1;
+                if (tf) trace_note(g, ak, 5, 0, 0);
                 qt[qh % 64] = now + 50 + {$random(seed)} % 200;   // no free slot: retry later
             end
             // the payload follows even when rejected; the endpoint discards it
@@ -469,6 +573,7 @@ generate for (g = 0; g < NE; g = g + 1) begin : ep
                     for (mj = 0; mj < mn && mj < MAXM; mj = mj + 1)
                         if (mbad < 0 && mb[mj] !== pbyte(mcli, r_id[mk], mj, m_resp0)) mbad = mj;
                     if (mbad >= 0) `ERR(("ep%0d rpc %0d resp=%0d: byte %0d corrupt", g, mk, m_resp0, mbad))
+                    if (tf) trace_note(g, mk, m_resp0 ? 3 : 1, mn, 0);
                     if (m_resp0) begin
                         r_got[mk] = r_got[mk] + 1;
                         if (r_got[mk] > 1) `ERR(("ep%0d rpc %0d: response delivered twice", g, mk))
@@ -497,7 +602,10 @@ generate for (g = 0; g < NE; g = g + 1) begin : ep
             xk = find_rpc(g, ab_id);
             if (xk < 0) `ERR(("ep%0d: abort for unknown id %h", g, ab_id))
             else if (r_st[xk] != 1) `ERR(("ep%0d rpc %0d: abort in state %0d", g, xk, r_st[xk]))
-            else begin r_st[xk] = 3; n_abort = n_abort + 1; n_inflight = n_inflight - 1; n_out = n_out - 1; end
+            else begin
+                r_st[xk] = 3; n_abort = n_abort + 1; n_inflight = n_inflight - 1; n_out = n_out - 1;
+                if (tf) trace_note(g, xk, 4, 0, r_srv[xk]);
+            end
         end
         ab_r <= ({$random(seed)} % 4) != 0;
     end
@@ -509,6 +617,15 @@ integer t, e, kk, n_unans;
 integer last_prog = 0, last_n = 0;
 always @(posedge clk) if (n_done + n_abort != last_n) begin last_n = n_done + n_abort; last_prog = now; end
 initial begin
+    if ($value$plusargs("trace=%s", tpath)) begin
+        tf = $fopen(tpath, "w");
+        if (!tf) $display("cannot open the trace file");
+        else begin
+            $fwrite(tf, "{\"ev\":\"meta\",\"title\":\"Homa: three endpoints (seed %0d, loss %0d, dup %0d, bad %0d per 1000)\",\"time_unit\":\"ns\"}\n",
+                    SEED, LOSS, DUP, BAD);
+            for (e = 0; e < NE; e = e + 1) $fwrite(tf, "{\"ev\":\"node\",\"node\":\"ep%0d\",\"label\":\"FPGA %0d\"}\n", e, e);
+        end
+    end
     for (e = 0; e < NE; e = e + 1) issued[e] = 0;
     repeat (10) @(posedge clk);
     rst = 1'b0;
@@ -537,6 +654,7 @@ initial begin
              n_lost, n_dupd, n_bad);
     $display("DONE seed=%0d loss=%0d dup=%0d bad=%0d: %0d rpcs, %0d answered, %0d aborted, %0d re-executed, %0d slot rejects, %0d cycles, %0d errors -> %0s",
              SEED, LOSS, DUP, BAD, nr, n_done, n_abort, n_reexec, n_rej, now, errors, errors == 0 ? "PASS" : "FAIL");
+    if (tf) $fclose(tf);
     $finish;
 end
 
