@@ -1,7 +1,5 @@
-// Place-and-route harness for homa_endpoint at its default parameters. The endpoint has about
-// 1100 port bits, more than any FPGA package has pins, so its inputs shift in from one pin (none
-// is constant, so no logic is optimized away) and its outputs are registered and folded into one
-// pin (none is unused). Resource counts come from the endpoint alone; this is only for timing.
+// Timing harness for homa_endpoint: its ~1100 port bits exceed any package, so inputs shift in from
+// one pin (none constant) and outputs fold into one pin (none unused).
 module homa_top (
     input  wire clk,
     input  wire si,
