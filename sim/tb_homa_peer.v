@@ -492,7 +492,7 @@ initial begin
     expect_none(T_DATA, 100);
     p_hdr(T_RESEND, 16'h0083, 16'h4004, cid | 1); p32(28, 256); p32(32, 44); px[36] = 1; send(PEER, 37);
     wait_pkt(T_DATA, 2000, q);
-    if (q < 0) `ERR(("RESEND did not release ungranted bytes")) else check_data(q, PEER, 16'h4004, 16'h0083, cid, 300, 256, 0, 1, 16'h0777, cid, 2);
+    if (q < 0) `ERR(("RESEND did not release ungranted bytes")) else check_data(q, PEER, 16'h4004, 16'h0083, cid, 300, 256, 1, 1, 16'h0777, cid, 2);
     // a GRANT past the end of the message must not stop the client asking for its response
     p_hdr(T_GRANT, 16'h0083, 16'h4004, cid | 1); p32(28, 5000); px[32] = 1; send(PEER, 33);
     flush_out;

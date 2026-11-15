@@ -7,7 +7,7 @@
     "slow":    "iverilog -g2005 -I rtl -s tb_sys -Ptb_sys.NREQ=2 -Ptb_sys.SVC=3000 -o build/ws.vvp -c sim/rtl_files.txt sim/tb_homa_system.v && vvp -n build/ws.vvp +trace={trace}",
     "crowded": "iverilog -g2005 -I rtl -s tb_sys -Ptb_sys.NREQ=5 -Ptb_sys.NRPC=4 -Ptb_sys.MAXOUT=6 -Ptb_sys.GAP=20 -o build/ws.vvp -c sim/rtl_files.txt sim/tb_homa_system.v && vvp -n build/ws.vvp +trace={trace}",
     "wave": {
-      "run": "iverilog -g2005 -I rtl -s tb_sys -s wave -Ptb_sys.NREQ=1 -Ptb_sys.SEED=28 -o build/wave.vvp -c sim/rtl_files.txt sim/tb_homa_system.v sim/wave.v && vvp -n build/wave.vvp +vcd={trace}",
+      "run": "iverilog -g2005 -I rtl -s tb_sys -s wave -Ptb_sys.NREQ=1 -Ptb_sys.SEED=25 -o build/wave.vvp -c sim/rtl_files.txt sim/tb_homa_system.v sim/wave.v && vvp -n build/wave.vvp +vcd={trace}",
       "trace": "build/wave.vcd"
     }
   },

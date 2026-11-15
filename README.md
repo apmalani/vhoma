@@ -34,7 +34,7 @@ Synthesized for an ECP5-5G 85F (LFE5UM5G-85F-8BG381) at the default parameters:
 
 |          | LUT4   | FF    | Block RAM  |
 |----------|--------|-------|------------|
-| endpoint | 16,281 | 5,247 | 128 of 208 |
+| endpoint | 16,762 | 5,247 | 128 of 208 |
 | IPv4     | 1,027  | 392   | 0          |
 
 22 MHz after place and route. It has not run on a board, which also needs an Ethernet MAC around `homa_ipv4`.

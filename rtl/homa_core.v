@@ -146,6 +146,7 @@ reg  [7:0]      gen     [0:NRPC-1];
 reg  [LW-1:0]   t_len   [0:NRPC-1];
 reg  [LW-1:0]   t_gnt   [0:NRPC-1];
 reg  [LW-1:0]   t_sent  [0:NRPC-1];
+reg  [LW-1:0]   t_rtx   [0:NRPC-1];   // data below this was released by a RESEND (lost GRANT)
 reg  [LW-1:0]   rs_s    [0:NRPC-1];   // pending retransmit range [rs_s, rs_e)
 reg  [LW-1:0]   rs_e    [0:NRPC-1];
 reg  [2:0]      t_prio  [0:NRPC-1];   // from GRANT
@@ -446,7 +447,8 @@ always @* begin
             if (rs_s[d_ix] < rs_e[d_ix]) begin
                 t_poff = rs_s[d_ix]; tx_pf = 8'd1; tx_prio = rs_prio[d_ix];
             end else begin
-                t_poff = t_sent[d_ix]; tx_pf = 8'd0; tx_prio = tx_sch[d_ix] ? t_prio[d_ix] : t_uprio[d_ix];
+                t_poff = t_sent[d_ix]; tx_pf = (t_sent[d_ix] < t_rtx[d_ix]) ? 8'd1 : 8'd0;
+                tx_prio = tx_sch[d_ix] ? t_prio[d_ix] : t_uprio[d_ix];
             end
             t_pl = (t_len[d_ix] - t_poff > SEGL) ? SEGL : t_len[d_ix] - t_poff;
             tx_off = t_poff; tx_len = t_len[d_ix]; tx_plen = t_pl; tx_cver = t_cver[d_ix];
@@ -605,6 +607,7 @@ always @(posedge clk) begin
                     // the receiver asked for bytes it granted: that GRANT was lost, so honor it now
                     if (tx_sch[hs] && eh_f32 != 32'hFFFF_FFFF && rq_end > t_gnt[hs]) begin
                         t_gnt[hs]  <= (rq_end > t_len[hs]) ? t_len[hs] : rq_end[LW-1:0];
+                        t_rtx[hs]  <= (rq_end > t_len[hs]) ? t_len[hs] : rq_end[LW-1:0];
                         t_prio[hs] <= eh_p36;
                     end
                 end
@@ -616,7 +619,7 @@ always @(posedge clk) begin
                 if (!role[hs]) begin
                     // server lost the RPC: send everything again (draft §6.1)
                     if (tx_on[hs] && !rx_done[hs]) begin
-                        t_sent[hs] <= 0; rs_s[hs] <= 0; rs_e[hs] <= 0;
+                        t_sent[hs] <= 0; rs_s[hs] <= 0; rs_e[hs] <= 0; t_rtx[hs] <= 0;
                         if (tx_sch[hs]) begin t_gnt[hs] <= 0; p_start[hs] <= 1'b1; end
                         rx_on[hs] <= 1'b0; bm[hs] <= 0; r_rcvd[hs] <= 0;
                         silent[hs] <= 0; nres[hs] <= 0;
@@ -717,7 +720,7 @@ always @(posedge clk) begin
                     tx_sch[fin_slot] <= (t_len[fin_slot] > UNSCHED_MAX);
                     t_gnt[fin_slot] <= (t_len[fin_slot] > UNSCHED_MAX) ? {LW{1'b0}} : t_len[fin_slot];
                     p_start[fin_slot] <= (t_len[fin_slot] > UNSCHED_MAX);
-                    t_sent[fin_slot] <= 0; rs_s[fin_slot] <= 0; rs_e[fin_slot] <= 0;
+                    t_sent[fin_slot] <= 0; rs_s[fin_slot] <= 0; rs_e[fin_slot] <= 0; t_rtx[fin_slot] <= 0;
                     t_uprio[fin_slot] <= fp_hit ? cut_prio(pcut[fp_ix], t_len[fin_slot]) : 3'd7;
                     t_cver[fin_slot]  <= fp_hit ? pver[fp_ix] : 16'd0;
                     t_prio[fin_slot]  <= 3'd0;
