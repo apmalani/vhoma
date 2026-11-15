@@ -5,65 +5,116 @@
     "lossy":   "iverilog -g2005 -I rtl -s tb_sys -Ptb_sys.NREQ=3 -Ptb_sys.LOSS=100 -Ptb_sys.STRICT=0 -o build/ws.vvp -c sim/rtl_files.txt sim/tb_homa_system.v && vvp -n build/ws.vvp +trace={trace}",
     "chaos":   "iverilog -g2005 -I rtl -s tb_sys -Ptb_sys.NREQ=3 -Ptb_sys.LOSS=80 -Ptb_sys.DUP=50 -Ptb_sys.BAD=50 -Ptb_sys.JIT=200 -Ptb_sys.STRICT=0 -o build/ws.vvp -c sim/rtl_files.txt sim/tb_homa_system.v && vvp -n build/ws.vvp +trace={trace}",
     "slow":    "iverilog -g2005 -I rtl -s tb_sys -Ptb_sys.NREQ=2 -Ptb_sys.SVC=3000 -o build/ws.vvp -c sim/rtl_files.txt sim/tb_homa_system.v && vvp -n build/ws.vvp +trace={trace}",
-    "crowded": "iverilog -g2005 -I rtl -s tb_sys -Ptb_sys.NREQ=5 -Ptb_sys.NRPC=4 -Ptb_sys.MAXOUT=6 -Ptb_sys.GAP=20 -o build/ws.vvp -c sim/rtl_files.txt sim/tb_homa_system.v && vvp -n build/ws.vvp +trace={trace}"
+    "crowded": "iverilog -g2005 -I rtl -s tb_sys -Ptb_sys.NREQ=5 -Ptb_sys.NRPC=4 -Ptb_sys.MAXOUT=6 -Ptb_sys.GAP=20 -o build/ws.vvp -c sim/rtl_files.txt sim/tb_homa_system.v && vvp -n build/ws.vvp +trace={trace}",
+    "wave": {
+      "run": "iverilog -g2005 -I rtl -s tb_sys -s wave -Ptb_sys.NREQ=1 -Ptb_sys.CLIENTS=1 -Ptb_sys.SEED=18 -o build/wave.vvp -c sim/rtl_files.txt sim/tb_homa_system.v sim/wave.v && vvp -n build/wave.vvp +vcd={trace}",
+      "trace": "build/wave.vcd"
+    }
   },
   "profile": {
     "name": "Homa (draft-ousterhout-tsvwg-homa-00)",
+    "decode": {
+      "type": "11:1",
+      "flow": "20:8&fffffffffffffffe",
+      "flow_label": "RPC",
+      "fields": { "rpcid": "20:8", "S": "27:1&1" }
+    },
     "types": {
       "DATA": {
         "color": "#4da3ff",
         "short": "DATA {off}",
         "log": "{msg} bytes {off}..{last} of {len}{retx? (retransmission)}{ackid? + piggybacked ACK}, priority {prio}",
-        "about": "Carries part of a request or response. The first bytes of a message go out right away (unscheduled); the rest only as the receiver grants them. Unscheduled bytes use the receiver's cutoffs for priority, granted bytes the priority in the GRANT."
+        "about": "Carries part of a request or response. The first bytes of a message go out right away (unscheduled); the rest only as the receiver grants them. Unscheduled bytes use the receiver's cutoffs for priority, granted bytes the priority in the GRANT.",
+        "code": 16,
+        "fields": { "len": "28:4", "ackid": "32:8", "cver": "42:2", "retx": "44:1", "off": "48:4" },
+        "compute": { "msg": "S?response:request", "payload": "bytes-52", "last": "off+payload-1" }
       },
       "GRANT": {
         "color": "#3ddc84",
         "short": "GRANT {off}",
         "log": "you may send the {msg} up to byte {off}, at priority {gprio}",
-        "about": "Sent by a message's receiver to let the sender transmit more of it, up to the given offset and at the given priority. Receivers grant the messages with the fewest bytes left first (SRPT) and keep a few in progress at once."
+        "about": "Sent by a message's receiver to let the sender transmit more of it, up to the given offset and at the given priority. Receivers grant the messages with the fewest bytes left first (SRPT) and keep a few in progress at once.",
+        "code": 17,
+        "fields": { "off": "28:4", "gprio": "32:1" },
+        "compute": { "msg": "S?request:response" }
       },
       "RESEND": {
         "color": "#ffa94d",
         "short": "RESEND {off}",
         "log": "please resend the {msg}: {what}, at priority {rprio}",
-        "about": "Sent when expected bytes have not arrived for a while, asking for them again. A client also uses it to ask a quiet server for its response, and it repairs lost GRANTs: asking for bytes counts as granting them."
+        "about": "Sent when expected bytes have not arrived for a while, asking for them again. A client also uses it to ask a quiet server for its response, and it repairs lost GRANTs: asking for bytes counts as granting them.",
+        "code": 18,
+        "fields": { "off": "28:4", "rlen": "32:4", "rprio": "36:1" },
+        "compute": { "msg": "S?request:response", "end": "off+rlen-1", "what": "rlen=4294967295?all of it:bytes {off}..{end}" }
       },
       "START": {
         "color": "#b197fc",
         "short": "START {len}B",
         "log": "the {msg} is {len} bytes, too long to send unscheduled: asking for GRANTs",
-        "about": "START_MSG: announces a message too long to send unscheduled, so the receiver can start granting it."
+        "about": "START_MSG: announces a message too long to send unscheduled, so the receiver can start granting it.",
+        "code": 25,
+        "fields": { "len": "28:4" },
+        "compute": { "msg": "S?response:request" }
       },
       "ACK": {
         "color": "#ced4da",
         "short": "ACK",
         "log": "response received: the server can forget this RPC{nacks? (and other RPCs)}",
-        "about": "Sent by the client once the whole response has arrived, so the server can free the RPC. It can also acknowledge other RPCs to the same server."
+        "about": "Sent by the client once the whole response has arrived, so the server can free the RPC. It can also acknowledge other RPCs to the same server.",
+        "code": 24,
+        "fields": { "nacks": "28:2" }
       },
       "NEED_ACK": {
         "color": "#ffd43b",
         "short": "NEED_ACK",
         "log": "the response went out a while ago with no ACK: did it arrive?",
-        "about": "Sent by a server that finished sending a response but never got an ACK. The client answers ACK if it has the response, or RESEND if it is missing bytes."
+        "about": "Sent by a server that finished sending a response but never got an ACK. The client answers ACK if it has the response, or RESEND if it is missing bytes.",
+        "code": 23
       },
       "BUSY": {
         "color": "#e599f7",
         "short": "BUSY",
         "log": "still working on it: do not give up on this RPC",
-        "about": "Reply to a RESEND when the peer is alive but has nothing to send yet, for example a server still computing its response. Keeps the RPC from timing out."
+        "about": "Reply to a RESEND when the peer is alive but has nothing to send yet, for example a server still computing its response. Keeps the RPC from timing out.",
+        "code": 20
       },
       "UNKNOWN": {
         "color": "#ff8787",
         "short": "UNKNOWN",
         "log": "no such RPC here: the sender must restart or drop it",
-        "about": "RPC_UNKNOWN: reply to a packet for an RPC the receiver has no record of. A client restarts the RPC from the beginning; a server just forgets it."
+        "about": "RPC_UNKNOWN: reply to a packet for an RPC the receiver has no record of. A client restarts the RPC from the beginning; a server just forgets it.",
+        "code": 19
       },
       "CUTOFFS": {
         "color": "#868e96",
         "short": "CUTOFFS v{ver}",
         "log": "use these priority cutoffs when sending to me: {cutoffs} (version {ver})",
-        "about": "Tells a peer which priority to give the unscheduled bytes of a message, by message length (shorter messages get higher priority). Sent when the peer's DATA shows an out-of-date cutoff version."
+        "about": "Tells a peer which priority to give the unscheduled bytes of a message, by message length (shorter messages get higher priority). Sent when the peer's DATA shows an out-of-date cutoff version.",
+        "code": 21,
+        "fields": { "c0": "28:4", "c1": "32:4", "c2": "36:4", "c3": "40:4", "c4": "44:4", "c5": "48:4", "c6": "52:4", "c7": "56:4", "ver": "60:2" },
+        "compute": { "cutoffs": "{c0} {c1} {c2} {c3} {c4} {c5} {c6} {c7}" }
       }
     }
+  },
+  "wave": {
+    "title": "Homa on FPGAs: read from the waveform",
+    "clock": "tb_sys.clk",
+    "nodes": [
+      { "node": "ep0", "label": "FPGA 0", "scope": "tb_sys.ep[0].u", "addr": "0a000001" },
+      { "node": "ep1", "label": "FPGA 1", "scope": "tb_sys.ep[1].u", "addr": "0a000002" },
+      { "node": "ep2", "label": "FPGA 2", "scope": "tb_sys.ep[2].u", "addr": "0a000003" }
+    ],
+    "tx": { "valid": "m_net_tvalid", "ready": "m_net_tready", "data": "m_net_tdata", "keep": "m_net_tkeep", "last": "m_net_tlast",
+            "dst": "m_net_daddr", "fields": { "prio": "m_net_prio" } },
+    "rx": { "valid": "s_net_tvalid", "data": "s_net_tdata", "keep": "s_net_tkeep", "last": "s_net_tlast",
+            "error": "s_net_tuser", "drop": "rx_drop" },
+    "notes": [
+      { "when": ["st_valid", "st_ok", "!st_resp"], "text": "app sends a {s_app_len} B request", "count": "requests sent", "flow": "st_id" },
+      { "when": ["st_valid", "!st_ok"], "text": "no free RPC slot for the request: app will retry", "count": "slot refusals" },
+      { "when": ["st_valid", "st_ok", "st_resp"], "text": "app sends a {s_app_len} B response", "count": "responses sent", "flow": "st_id" },
+      { "when": ["m_app_tvalid", "m_app_tready", "m_app_tlast", "!m_app_resp"], "text": "app received the {m_app_len} B request", "count": "requests received", "flow": "m_app_id" },
+      { "when": ["m_app_tvalid", "m_app_tready", "m_app_tlast", "m_app_resp"], "text": "app received the {m_app_len} B response: RPC done", "count": "answers received", "flow": "m_app_id" },
+      { "when": ["ab_valid", "ab_ready"], "text": "app gave up: no answer", "count": "gave up", "flow": "ab_id" }
+    ]
   }
 }

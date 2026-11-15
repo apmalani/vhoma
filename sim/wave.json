@@ -1,0 +1,35 @@
+{
+  "extensionVersion": "1.6.1",
+  "fileName": "build/wave.vcd",
+  "markerTime": null,
+  "altMarkerTime": null,
+  "displayTimeUnit": "ns",
+  "zoomRatio": 0.00025,
+  "scrollLeft": 0,
+  "displayedSignals": [
+    {
+      "dataType": "signal-group",
+      "groupName": "FPGA 0: client",
+      "collapseState": 2,
+      "children": [
+        { "dataType": "netlist-variable", "name": "s_app_valid", "scopePath": ["tb_sys", "ep[0]", "u"], "numberFormat": "binary", "colorIndex": 0, "rowHeight": 1, "verticalScale": 1, "nameType": "custom", "customName": "app: send request", "renderType": "binary", "valueLinkEnable": false },
+        { "dataType": "netlist-variable", "name": "name", "scopePath": ["wave", "out0"], "numberFormat": "ascii", "colorIndex": 1, "rowHeight": 1, "verticalScale": 1, "nameType": "custom", "customName": "packet out", "renderType": "multiBit", "valueLinkEnable": false },
+        { "dataType": "netlist-variable", "name": "m_net_tdata", "scopePath": ["tb_sys", "ep[0]", "u"], "numberFormat": "hexadecimal", "colorIndex": 1, "rowHeight": 1, "verticalScale": 1, "nameType": "custom", "customName": "packet out: wire bytes", "renderType": "multiBit", "valueLinkEnable": false },
+        { "dataType": "netlist-variable", "name": "name", "scopePath": ["wave", "in0"], "numberFormat": "ascii", "colorIndex": 2, "rowHeight": 1, "verticalScale": 1, "nameType": "custom", "customName": "packet in", "renderType": "multiBit", "valueLinkEnable": false },
+        { "dataType": "netlist-variable", "name": "m_app_tvalid", "scopePath": ["tb_sys", "ep[0]", "u"], "numberFormat": "binary", "colorIndex": 0, "rowHeight": 1, "verticalScale": 1, "nameType": "custom", "customName": "app: response delivered", "renderType": "binary", "valueLinkEnable": false }
+      ]
+    },
+    {
+      "dataType": "signal-group",
+      "groupName": "FPGA 1: server",
+      "collapseState": 2,
+      "children": [
+        { "dataType": "netlist-variable", "name": "name", "scopePath": ["wave", "in1"], "numberFormat": "ascii", "colorIndex": 2, "rowHeight": 1, "verticalScale": 1, "nameType": "custom", "customName": "packet in", "renderType": "multiBit", "valueLinkEnable": false },
+        { "dataType": "netlist-variable", "name": "m_app_tvalid", "scopePath": ["tb_sys", "ep[1]", "u"], "numberFormat": "binary", "colorIndex": 0, "rowHeight": 1, "verticalScale": 1, "nameType": "custom", "customName": "app: request delivered", "renderType": "binary", "valueLinkEnable": false },
+        { "dataType": "netlist-variable", "name": "s_app_valid", "scopePath": ["tb_sys", "ep[1]", "u"], "numberFormat": "binary", "colorIndex": 0, "rowHeight": 1, "verticalScale": 1, "nameType": "custom", "customName": "app: send response", "renderType": "binary", "valueLinkEnable": false },
+        { "dataType": "netlist-variable", "name": "name", "scopePath": ["wave", "out1"], "numberFormat": "ascii", "colorIndex": 1, "rowHeight": 1, "verticalScale": 1, "nameType": "custom", "customName": "packet out", "renderType": "multiBit", "valueLinkEnable": false },
+        { "dataType": "netlist-variable", "name": "m_net_tdata", "scopePath": ["tb_sys", "ep[1]", "u"], "numberFormat": "hexadecimal", "colorIndex": 1, "rowHeight": 1, "verticalScale": 1, "nameType": "custom", "customName": "packet out: wire bytes", "renderType": "multiBit", "valueLinkEnable": false }
+      ]
+    }
+  ]
+}

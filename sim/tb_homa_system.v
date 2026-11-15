@@ -25,6 +25,7 @@ parameter DUP    = 0;      // per mille
 parameter BAD    = 0;      // per mille: frame error flagged on tlast
 parameter JIT    = 0;      // extra random network delay, cycles
 parameter NREQ   = 150;    // requests issued per endpoint
+parameter CLIENTS = 7;     // endpoints that issue requests, one bit each
 parameter MAXOUT = 2;      // outstanding requests per client
 parameter STRICT = 1;      // every RPC must succeed exactly once
 parameter SVC    = 60;     // max server think time, cycles (long values cause BUSY)
@@ -626,7 +627,7 @@ initial begin
             for (e = 0; e < NE; e = e + 1) $fwrite(tf, "{\"ev\":\"node\",\"node\":\"ep%0d\",\"label\":\"FPGA %0d\"}\n", e, e);
         end
     end
-    for (e = 0; e < NE; e = e + 1) issued[e] = 0;
+    for (e = 0; e < NE; e = e + 1) issued[e] = CLIENTS[e] ? 0 : NREQ;
     repeat (10) @(posedge clk);
     rst = 1'b0;
     t = 0;
